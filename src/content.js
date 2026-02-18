@@ -11,18 +11,40 @@
   const NS = document.documentElement.namespaceURI; // namespace DAISY
   const htmlNS = "http://www.w3.org/1999/xhtml";
 
-  const bodymatterElems = document.getElementsByTagNameNS(NS, "bodymatter");
-  if (!bodymatterElems.length) {
-    console.warn("Pas de <bodymatter> trouvé !");
+  // On collecte bodymatter + rearmatter (le rearmatter peut contenir conclusion, annexes, etc.)
+  const sectionContainers = [
+    ...Array.from(document.getElementsByTagNameNS(NS, "bodymatter")),
+    ...Array.from(document.getElementsByTagNameNS(NS, "rearmatter")),
+  ];
+  if (!sectionContainers.length) {
+    console.warn("Pas de <bodymatter> ni <rearmatter> trouvé !");
     return;
   }
-  const bodymatter = bodymatterElems[0];
 
   const levels = [];
-  for (let lvl = 1; lvl <= 6; lvl++) {
-    const elems = Array.from(bodymatter.getElementsByTagNameNS(NS, "level" + lvl));
-    elems.forEach(e => e._level = lvl);
-    levels.push(...elems);
+
+  // Certains fichiers utilisent <level> sans numéro au lieu de <level1>...<level6>
+  for (const container of sectionContainers) {
+    // Balises levelN numérotées (level1, level2...)
+    for (let lvl = 1; lvl <= 6; lvl++) {
+      const elems = Array.from(container.getElementsByTagNameNS(NS, "level" + lvl));
+      elems.forEach(e => { if (e._level === undefined) e._level = lvl; });
+      levels.push(...elems);
+    }
+    // Balise <level> sans numéro : profondeur déduite via la hiérarchie DOM
+    const unnumbered = Array.from(container.getElementsByTagNameNS(NS, "level"));
+    unnumbered.forEach(e => {
+      if (e._level !== undefined) return; // déjà traité
+      let depth = 1;
+      let ancestor = e.parentElement;
+      while (ancestor) {
+        const localName = ancestor.localName || ancestor.tagName || "";
+        if (/^level(\d*)$/.test(localName)) depth++;
+        ancestor = ancestor.parentElement;
+      }
+      e._level = Math.min(depth, 6);
+      levels.push(e);
+    });
   }
   levels.sort((a, b) => {
     if (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_PRECEDING) return 1;
@@ -48,14 +70,17 @@
       el.id = `section-${index + 1}`;
     }
 
-    // Cherche un vrai titre dans une balise <hN>
+    // Cherche un vrai titre dans <hN> ou <hd> (utilisé avec les balises <level> sans numéro)
     const headingTagName = "h" + lvl;
-    const titleElem = el.getElementsByTagNameNS(NS, headingTagName)[0];
+    const titleElem = el.getElementsByTagNameNS(NS, headingTagName)[0]
+      || el.getElementsByTagNameNS(NS, "hd")[0];
 
     let titleText = "";
-    if (titleElem && titleElem.textContent.trim()) {
-      titleText = titleElem.textContent.trim();
-    } else {
+    if (titleElem) {
+      // Extraire le texte en remplacant <br> par un espace pour eviter les mots colles
+      titleText = extractText(titleElem).trim();
+    }
+    if (!titleText) {
       titleText = `Section ${index + 1}`;
     }
 
@@ -145,7 +170,26 @@
     return htmlElem;
   }
 
-  // F° Styles 
+  // Extrait le texte d'un element XML en inserant un espace a chaque <br>
+  // pour eviter les mots colles ("IntroductionSous-titre" -> "Introduction Sous-titre")
+  function extractText(node) {
+    function walk(n) {
+      let result = "";
+      for (const child of n.childNodes) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          result += child.textContent;
+        } else if (child.localName === "br") {
+          result += " ";
+        } else {
+          result += walk(child);
+        }
+      }
+      return result;
+    }
+    return walk(node).replace(/\s+/g, " ");
+  }
+
+  // FÂ° Styles 
   function style_font(el) {
     el.style.fontFamily = "sans-serif";
     el.style.lineHeight = "1.6";
