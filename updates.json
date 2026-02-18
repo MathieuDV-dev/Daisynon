@@ -1,0 +1,12 @@
+{
+  "addons": {
+    "daisynon@mdv.corsica": {
+      "updates": [
+        {
+          "version": "1.0.1",
+          "update_link": "https://github.com/MathieuDV-dev/daisynon/tree/main/releases/1.0.1/daisynon-1.0.1.xpi"
+        }
+      ]
+    }
+  }
+}
