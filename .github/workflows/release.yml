@@ -1,0 +1,111 @@
+name: Release Extension
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install web-ext
+        run: npm install -g web-ext
+
+      # ─── Extraction de la version depuis le tag ───────────────────────────
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      # ─── Packaging ────────────────────────────────────────────────────────
+      - name: Build ZIP (Firefox)
+        run: |
+          cd src
+          zip -r ../daisynon-firefox-${{ steps.version.outputs.VERSION }}.zip . \
+            --exclude "*.DS_Store" --exclude "__MACOSX/*"
+
+      - name: Build ZIP (Chrome)
+        run: |
+          cd src
+          # Chrome ne supporte pas browser_specific_settings → on le retire
+          python3 - <<'EOF'
+          import json, shutil, os
+
+          with open("manifest.json") as f:
+              manifest = json.load(f)
+
+          manifest.pop("browser_specific_settings", None)
+
+          os.makedirs("../chrome-build", exist_ok=True)
+          for item in os.listdir("."):
+              src = item
+              dst = f"../chrome-build/{item}"
+              if os.path.isdir(src):
+                  shutil.copytree(src, dst)
+              else:
+                  shutil.copy2(src, dst)
+
+          with open("../chrome-build/manifest.json", "w") as f:
+              json.dump(manifest, f, indent=2, ensure_ascii=False)
+          EOF
+
+          cd ../chrome-build
+          zip -r ../daisynon-chrome-${{ steps.version.outputs.VERSION }}.zip . \
+            --exclude "*.DS_Store" --exclude "__MACOSX/*"
+
+      # ─── GitHub Release ───────────────────────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            daisynon-firefox-${{ steps.version.outputs.VERSION }}.zip
+            daisynon-chrome-${{ steps.version.outputs.VERSION }}.zip
+          body_path: CHANGELOG.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ─── Firefox AMO ─────────────────────────────────────────────────────
+      - name: Sign & Submit to Firefox AMO
+        run: |
+          web-ext sign \
+            --source-dir ./src \
+            --api-key "${{ secrets.AMO_JWT_ISSUER }}" \
+            --api-secret "${{ secrets.AMO_JWT_SECRET }}" \
+            --channel listed
+        # En cas d'échec AMO (ex: review manuelle), l'étape Chrome continue quand même
+        continue-on-error: true
+
+      # ─── Chrome Web Store ─────────────────────────────────────────────────
+      - name: Upload to Chrome Web Store
+        run: |
+          # Obtenir un access token OAuth2
+          ACCESS_TOKEN=$(curl -s -X POST https://oauth2.googleapis.com/token \
+            -d "client_id=${{ secrets.CHROME_CLIENT_ID }}" \
+            -d "client_secret=${{ secrets.CHROME_CLIENT_SECRET }}" \
+            -d "refresh_token=${{ secrets.CHROME_REFRESH_TOKEN }}" \
+            -d "grant_type=refresh_token" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+          # Upload du zip
+          curl -s -X PUT \
+            "https://www.googleapis.com/upload/chromewebstore/v1.1/items/${{ secrets.CHROME_EXTENSION_ID }}" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "x-goog-api-version: 2" \
+            -T daisynon-chrome-${{ steps.version.outputs.VERSION }}.zip
+
+          # Publier la mise à jour
+          curl -s -X POST \
+            "https://www.googleapis.com/chromewebstore/v1.1/items/${{ secrets.CHROME_EXTENSION_ID }}/publish" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "x-goog-api-version: 2" \
+            -H "Content-Length: 0"
+        continue-on-error: true
