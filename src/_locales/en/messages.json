@@ -1,0 +1,8 @@
+{
+  "extName": {
+    "message": "Daisynon"
+  },
+  "extDescription": {
+    "message": "Displays locals Daisy XML (DTBook) files as readable HTML. NVDA-compatible. Adds structural cues for screen reader navigation and allows note-taking using a companion extension (e.g., Manote)."
+  }
+}
