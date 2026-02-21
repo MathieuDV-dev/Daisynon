@@ -230,13 +230,7 @@
     return el;
   }
 
-
-
-
-
-
   // Gestion d'ID unique
-
 
   (async () => {
     const seen = new Map();
@@ -271,7 +265,6 @@
       }
     }
   })();
-
 
   // Et c'est fini !
   body.setAttribute('data-daisy-ready', 'true');

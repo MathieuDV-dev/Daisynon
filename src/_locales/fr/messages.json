@@ -3,6 +3,6 @@
     "message": "Daisynon"
   },
   "extDescription": {
-    "message": "Affiche les fichiers locaux Daisy XML (DTBook) sous forme HTML lisible. Compatible NVDA. Ajoute des informations pour permettre le suivi par NVDA et la prise de notes (extension tierce, ex : Manote)."
+    "message": "Lisez vos livres DAISY Text directement dans Firefox. Conversion XML → HTML instantanée, navigation par chapitres et compatibilité totale avec NVDA et les lecteurs d'écran."
   }
 }
